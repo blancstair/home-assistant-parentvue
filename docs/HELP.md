@@ -1,6 +1,6 @@
 # ParentVUE for Home Assistant — Help & User Guide
 
-This guide applies to **ParentVUE integration 0.2.0**.
+This guide applies to **ParentVUE integration 0.2.1**.
 
 ## What this integration does
 
@@ -13,7 +13,7 @@ another cloud service, and does not add telemetry.
 
 ## Current data
 
-Version 0.2.0 currently exposes:
+Version 0.2.1 currently exposes:
 
 - one Home Assistant device per discovered child
 - school
@@ -40,7 +40,7 @@ ParentVUE is intentionally treated conservatively.
 
 ## Installation with HACS
 
-After this repository has been published to GitHub:
+After this repository is published at `https://github.com/blancstair/home-assistant-parentvue`:
 
 1. Open HACS in Home Assistant.
 2. Open the three-dot menu.
@@ -88,7 +88,7 @@ an entity or diagnostic value.
 
 ## ParentVUE Dashboard
 
-Version 0.2.0 bundles a custom card named:
+Version 0.2.1 bundles a custom card named:
 
 **ParentVUE Dashboard**
 
@@ -191,7 +191,7 @@ grade where ParentVUE does not provide one.
 
 ### Dashboard card is missing
 
-After updating from a version before 0.2.0:
+After updating from a version before 0.2.1:
 
 1. restart Home Assistant
 2. perform a hard browser refresh

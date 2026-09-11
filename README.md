@@ -2,7 +2,7 @@
 
 A privacy-conscious Home Assistant custom integration for **Edupoint ParentVUE**.
 
-Current version: **0.2.0**
+Current version: **0.2.1**
 
 > This project is independent and is not affiliated with Edupoint or any school district.
 
@@ -26,7 +26,7 @@ Development was initially validated against Chesapeake Public Schools ParentVUE:
 
 ## Dashboard
 
-Version 0.2.0 ships a frontend card with the integration itself:
+Version 0.2.1 ships a frontend card with the integration itself:
 
 `custom:parentvue-dashboard-card`
 
@@ -40,8 +40,6 @@ See [`docs/HELP.md`](docs/HELP.md) for setup instructions.
 ## Installation
 
 ### HACS custom repository
-
-After replacing the GitHub-owner placeholders and publishing this repository:
 
 1. Open HACS.
 2. Open **Custom repositories**.
@@ -102,13 +100,14 @@ or student data.
 ## Documentation
 
 - [Full help and user guide](docs/HELP.md)
+- [GitHub web publishing guide](GITHUB_WEB_PUBLISH.md)
 - [Research notes](RESEARCH_NOTES.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Dashboard YAML](dashboard/parentvue_dashboard.yaml)
 
-## Current 0.2.0 entities
+## Current 0.2.1 entities
 
 Per child:
 
@@ -129,11 +128,11 @@ Semantic versioning is used from the beginning.
 
 GitHub releases should use tags such as:
 
-`v0.2.0`
+`v0.2.1`
 
 The integration manifest version is:
 
-`0.2.0`
+`0.2.1`
 
 ## Development principles
 

@@ -18,4 +18,4 @@ redacted Home Assistant traceback.
 
 If a vulnerability could expose credentials or student records, do not open a
 public issue containing exploit details. Contact the repository maintainer
-privately using the security-reporting method published on the GitHub repository.
+privately using GitHub's private vulnerability-reporting feature if it is enabled for the repository.

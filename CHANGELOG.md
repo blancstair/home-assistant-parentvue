@@ -3,6 +3,22 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.2.1 - 2026-09-11
+
+### Changed
+
+- Replaced all GitHub-owner placeholders with `blancstair`.
+- Removed local publishing/setup helper scripts.
+- Added concise GitHub website-only publishing instructions.
+- Updated repository URLs and issue links for
+  `https://github.com/blancstair/home-assistant-parentvue`.
+- Updated documentation to use the v0.2.1 release number.
+- Added a version query to the bundled dashboard resource so browser caching does not hide card updates.
+
+### Fixed
+
+- Publication package is ready for direct upload through the GitHub website.
+
 ## 0.2.0 - 2026-09-11
 
 ### Added

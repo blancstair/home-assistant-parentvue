@@ -15,7 +15,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import ParentVueClient
-from .const import CONF_BASE_URL, DASHBOARD_CARD_URL, PLATFORMS
+from .const import (
+    CONF_BASE_URL,
+    DASHBOARD_CARD_RESOURCE_URL,
+    DASHBOARD_CARD_URL,
+    PLATFORMS,
+)
 from .coordinator import ParentVueDataUpdateCoordinator
 
 
@@ -51,7 +56,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             # already be registered from the original setup.
             pass
 
-        add_extra_js_url(hass, DASHBOARD_CARD_URL)
+        add_extra_js_url(hass, DASHBOARD_CARD_RESOURCE_URL)
 
     return True
 

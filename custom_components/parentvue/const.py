@@ -4,7 +4,7 @@ from datetime import timedelta
 
 DOMAIN = "parentvue"
 NAME = "ParentVUE"
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 CONF_BASE_URL = "base_url"
 
@@ -25,3 +25,4 @@ MODEL = "ParentVUE student"
 
 # Bundled ParentVUE dashboard card.
 DASHBOARD_CARD_URL = "/parentvue/frontend/parentvue-dashboard-card.js"
+DASHBOARD_CARD_RESOURCE_URL = f"{DASHBOARD_CARD_URL}?v={VERSION}"
