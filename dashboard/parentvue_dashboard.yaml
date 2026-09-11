@@ -1,0 +1,11 @@
+title: ParentVUE
+views:
+  - title: School
+    path: school
+    icon: mdi:school
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: custom:parentvue-dashboard-card
+            title: ParentVUE

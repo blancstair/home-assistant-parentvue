@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to ParentVUE",
+        "description": "Connect Home Assistant directly to your district's ParentVUE website.",
+        "data": {
+          "base_url": "ParentVUE district URL",
+          "username": "ParentVUE username",
+          "password": "ParentVUE password"
+        },
+        "data_description": {
+          "base_url": "Use the district base URL, for example https://va-cps-psv.edupoint.com. HTTPS is required.",
+          "username": "Your normal ParentVUE website username.",
+          "password": "Your normal ParentVUE website password. It is stored in Home Assistant's config entry and is never exposed as an entity."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate ParentVUE",
+        "description": "Enter your current ParentVUE credentials.",
+        "data": {
+          "username": "ParentVUE username",
+          "password": "ParentVUE password"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Enter a valid HTTPS ParentVUE district URL.",
+      "invalid_auth": "The ParentVUE username or password was rejected.",
+      "cannot_connect": "Home Assistant could not reach the ParentVUE server.",
+      "unsupported_deployment": "This ParentVUE website deployment is not currently supported.",
+      "endpoint_unavailable": "A required ParentVUE website endpoint is not available.",
+      "no_students": "No students were found for this ParentVUE account.",
+      "unknown": "An unexpected error occurred while connecting to ParentVUE."
+    },
+    "abort": {
+      "already_configured": "This ParentVUE account is already configured."
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "ParentVUE authentication failed. Reauthentication is required."
+    }
+  }
+}

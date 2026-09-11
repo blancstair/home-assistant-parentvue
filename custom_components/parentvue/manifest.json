@@ -1,0 +1,20 @@
+{
+  "domain": "parentvue",
+  "name": "ParentVUE",
+  "version": "0.2.0",
+  "config_flow": true,
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "requirements": [
+    "beautifulsoup4==4.13.3"
+  ],
+  "codeowners": [
+    "@YOUR_GITHUB_USERNAME"
+  ],
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
+  "documentation": "https://github.com/YOUR_GITHUB_USERNAME/home-assistant-parentvue",
+  "issue_tracker": "https://github.com/YOUR_GITHUB_USERNAME/home-assistant-parentvue/issues"
+}
