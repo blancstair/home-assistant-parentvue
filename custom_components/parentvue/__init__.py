@@ -12,7 +12,9 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.typing import ConfigType
 
 from .api import ParentVueClient
 from .const import (
@@ -20,8 +22,12 @@ from .const import (
     DASHBOARD_CARD_RESOURCE_URL,
     DASHBOARD_CARD_URL,
     PLATFORMS,
+    VERSION,
 )
 from .coordinator import ParentVueDataUpdateCoordinator
+
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 @dataclass(slots=True)
@@ -35,8 +41,7 @@ class ParentVueRuntimeData:
 type ParentVueConfigEntry = ConfigEntry[ParentVueRuntimeData]
 
 
-
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up ParentVUE integration resources."""
     card_path = Path(__file__).parent / "frontend" / "parentvue-dashboard-card.js"
 
@@ -70,7 +75,7 @@ async def async_setup_entry(
         hass,
         cookie_jar=aiohttp.CookieJar(),
         headers={
-            "User-Agent": "HomeAssistant-ParentVUE/0.1.0",
+            "User-Agent": f"HomeAssistant-ParentVUE/{VERSION}",
             "Accept-Language": "en-US,en;q=0.9",
         },
     )

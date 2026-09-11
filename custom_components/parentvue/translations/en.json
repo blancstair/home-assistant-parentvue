@@ -10,7 +10,7 @@
           "password": "ParentVUE password"
         },
         "data_description": {
-          "base_url": "Use the district base URL, for example https://va-cps-psv.edupoint.com. HTTPS is required.",
+          "base_url": "Enter your district's ParentVUE base URL. HTTPS is required.",
           "username": "Your normal ParentVUE website username.",
           "password": "Your normal ParentVUE website password. It is stored in Home Assistant's config entry and is never exposed as an entity."
         }

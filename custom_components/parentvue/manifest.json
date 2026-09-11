@@ -1,20 +1,20 @@
 {
   "domain": "parentvue",
   "name": "ParentVUE",
-  "version": "0.2.1",
-  "config_flow": true,
-  "integration_type": "hub",
-  "iot_class": "cloud_polling",
-  "requirements": [
-    "beautifulsoup4==4.13.3"
-  ],
   "codeowners": [
     "@blancstair"
   ],
+  "config_flow": true,
   "dependencies": [
     "frontend",
     "http"
   ],
   "documentation": "https://github.com/blancstair/home-assistant-parentvue",
-  "issue_tracker": "https://github.com/blancstair/home-assistant-parentvue/issues"
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/blancstair/home-assistant-parentvue/issues",
+  "requirements": [
+    "beautifulsoup4==4.13.3"
+  ],
+  "version": "0.2.2"
 }

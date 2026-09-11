@@ -3,6 +3,17 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.2.2 - 2026-09-11
+
+### Fixed
+
+- Sorted `manifest.json` keys in Home Assistant Hassfest order.
+- Removed the literal district URL from translatable config-flow text.
+- Added `CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)` for the
+  config-entry-only integration.
+- Updated `async_setup` to use Home Assistant's current `ConfigType` annotation.
+- Updated ParentVUE HTTP User-Agent strings to use the integration version.
+
 ## 0.2.1 - 2026-09-11
 
 ### Changed
