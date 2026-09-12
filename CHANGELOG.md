@@ -3,6 +3,32 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.2.5 - 2026-09-11
+
+### Fixed
+
+- Fixed a false authentication failure after a successful ParentVUE login.
+  Chesapeake returned `/Home_PXP2.aspx` with all expected session cookies, but
+  the previous login-page detector could combine unrelated username/password
+  controls in the authenticated HTML and incorrectly classify it as a login page.
+- Authenticated `.student-info[data-agu]` selectors are now treated as stronger
+  evidence of a successful ParentVUE session.
+- Login-form fallback detection now requires username and password fields to be
+  in the same form.
+- ParentVUE browser headers are now attached to each HTTP request. Home
+  Assistant intentionally replaces `ClientSession` default headers, so the
+  previous session-level browser User-Agent was not guaranteed to reach the
+  district server.
+- Fixed the Home Assistant warning caused by explicitly closing an
+  `async_create_clientsession` session during config-flow validation. The
+  temporary session now uses `auto_cleanup=False` and `detach()` as required by
+  Home Assistant's session helper.
+
+### Tests
+
+- Added regression coverage for authenticated pages containing password/account
+  controls so they cannot be mistaken for the ParentVUE login form.
+
 ## 0.2.4 - 2026-09-11
 
 ### Fixed

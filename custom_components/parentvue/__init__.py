@@ -18,8 +18,6 @@ from homeassistant.helpers.typing import ConfigType
 
 from .api import ParentVueClient
 from .const import (
-    BROWSER_ACCEPT,
-    BROWSER_USER_AGENT,
     CONF_BASE_URL,
     DASHBOARD_CARD_RESOURCE_URL,
     DASHBOARD_CARD_URL,
@@ -76,11 +74,6 @@ async def async_setup_entry(
     session = async_create_clientsession(
         hass,
         cookie_jar=aiohttp.CookieJar(),
-        headers={
-            "User-Agent": BROWSER_USER_AGENT,
-            "Accept": BROWSER_ACCEPT,
-            "Accept-Language": "en-US,en;q=0.9",
-        },
     )
 
     client = ParentVueClient(

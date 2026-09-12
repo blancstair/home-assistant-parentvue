@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 import aiohttp
 from bs4 import BeautifulSoup, Tag
 
+from .const import BROWSER_ACCEPT, BROWSER_USER_AGENT
 from .models import (
     ParentVueChild,
     ParentVueClassMeeting,
@@ -133,6 +134,15 @@ class ParentVueClient:
     def _url(self, path: str) -> str:
         return urljoin(f"{self.base_url}/", path.lstrip("/"))
 
+    @staticmethod
+    def _browser_headers() -> dict[str, str]:
+        """Return browser-compatible headers required by ParentVUE."""
+        return {
+            "User-Agent": BROWSER_USER_AGENT,
+            "Accept": BROWSER_ACCEPT,
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
     async def _get_text(
         self,
         path: str,
@@ -141,7 +151,8 @@ class ParentVueClient:
         referer: str | None = None,
         allow_login_page: bool = False,
     ) -> tuple[str, str]:
-        headers: dict[str, str] = {}
+        headers = self._browser_headers()
+        headers["Upgrade-Insecure-Requests"] = "1"
         if referer:
             headers["Referer"] = referer
 
@@ -185,6 +196,7 @@ class ParentVueClient:
                 url,
                 data=data,
                 headers={
+                    **self._browser_headers(),
                     "Referer": referer,
                     "Origin": self.base_url,
                     "Content-Type": "application/x-www-form-urlencoded",
@@ -215,6 +227,8 @@ class ParentVueClient:
         referer_path: str,
     ) -> Any:
         headers = {
+            **self._browser_headers(),
+            "Accept": "application/json, text/javascript, */*; q=0.01",
             "AGU": str(child_index),
             "CURRENT_WEB_PORTAL": "ParentVUE",
             "Content-Type": "application/json; charset=UTF-8",
@@ -264,13 +278,36 @@ class ParentVueClient:
 
     @staticmethod
     def _looks_like_login(final_url: str, body: str) -> bool:
-        if "pxp2_login_parent.aspx" in urlsplit(final_url).path.casefold():
+        """Return True only when the response is actually a ParentVUE login page."""
+        path = urlsplit(final_url).path.casefold()
+        if "pxp2_login_parent.aspx" in path:
             return True
-        # A redirected login page may not always preserve the exact final path.
+
         soup = BeautifulSoup(body, "html.parser")
-        return soup.find("input", {"type": "password"}) is not None and (
-            soup.find("input", {"name": re.compile("username", re.I)}) is not None
-        )
+
+        # The authenticated ParentVUE shell contains student selectors. Their
+        # presence is stronger evidence than generic account/password controls
+        # that may also exist elsewhere in an authenticated page.
+        if soup.select_one(".student-info[data-agu]") is not None:
+            return False
+
+        # For unusual deployments where the URL is preserved across a redirect,
+        # require username + password to belong to the SAME form. The previous
+        # global search could combine unrelated controls and return a false
+        # positive after a successful login.
+        for password_input in soup.find_all("input", {"type": "password"}):
+            if not isinstance(password_input, Tag):
+                continue
+            form = password_input.find_parent("form")
+            if not isinstance(form, Tag):
+                continue
+            if form.find(
+                "input",
+                {"name": re.compile("username", re.IGNORECASE)},
+            ) is not None:
+                return True
+
+        return False
 
     @staticmethod
     def _login_form(body: str) -> tuple[Tag, Tag, Tag, Tag | None]:
@@ -390,11 +427,15 @@ class ParentVueClient:
             post_url, data, referer=login_url
         )
 
+        children = self._parse_children(home_html)
         returned_to_login = self._looks_like_login(final_url, home_html)
+        final_path = urlsplit(final_url).path
         _LOGGER.debug(
-            "ParentVUE login result path: %s; returned_to_login=%s; cookie names after submit: %s",
-            urlsplit(final_url).path,
+            "ParentVUE login result path: %s; returned_to_login=%s; "
+            "child_selector_count=%s; cookie names after submit: %s",
+            final_path,
             returned_to_login,
+            len(children),
             sorted(cookie.key for cookie in self._session.cookie_jar),
         )
 
@@ -403,20 +444,13 @@ class ParentVueClient:
                 "ParentVUE returned to the login page after authentication"
             )
 
-        if "home_pxp2.aspx" not in urlsplit(final_url).path.casefold():
-            # Some deployments may use a different authenticated landing path.
-            # Accept it only if the normal child selector exists.
-            children = self._parse_children(home_html)
-            if not children:
-                raise ParentVueUnsupportedDeployment(
-                    "ParentVUE authenticated landing page was not recognized"
-                )
-        else:
-            children = self._parse_children(home_html)
-
         if not children:
-            raise ParentVueNoStudents(
-                "No students were found for this ParentVUE account"
+            if "home_pxp2.aspx" in final_path.casefold():
+                raise ParentVueNoStudents(
+                    "No students were found for this ParentVUE account"
+                )
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE authenticated landing page was not recognized"
             )
 
         self._last_home_html = home_html

@@ -26,7 +26,7 @@
     },
     "error": {
       "invalid_url": "Enter a valid HTTPS ParentVUE district URL.",
-      "invalid_auth": "ParentVUE returned to the login page or rejected the login. Confirm the credentials work on the district ParentVUE website.",
+      "invalid_auth": "ParentVUE did not establish an authenticated website session. Confirm the credentials work on the district ParentVUE website.",
       "cannot_connect": "Home Assistant could not reach the ParentVUE server.",
       "unsupported_deployment": "This ParentVUE website deployment is not currently supported.",
       "endpoint_unavailable": "A required ParentVUE website endpoint is not available.",

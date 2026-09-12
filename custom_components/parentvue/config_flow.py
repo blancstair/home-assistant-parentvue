@@ -26,13 +26,7 @@ from .api import (
     ParentVueUnsupportedDeployment,
     normalize_base_url,
 )
-from .const import (
-    BROWSER_ACCEPT,
-    BROWSER_USER_AGENT,
-    CONF_BASE_URL,
-    DEFAULT_BASE_URL,
-    DOMAIN,
-)
+from .const import CONF_BASE_URL, DEFAULT_BASE_URL, DOMAIN
 
 USER_SCHEMA = vol.Schema(
     {
@@ -75,12 +69,8 @@ async def _validate(
 
     session = async_create_clientsession(
         flow.hass,
+        auto_cleanup=False,
         cookie_jar=aiohttp.CookieJar(),
-        headers={
-            "User-Agent": BROWSER_USER_AGENT,
-            "Accept": BROWSER_ACCEPT,
-            "Accept-Language": "en-US,en;q=0.9",
-        },
     )
 
     client = ParentVueClient(
@@ -105,7 +95,7 @@ async def _validate(
     except Exception:  # noqa: BLE001 - config flow must map unknown failures safely
         return "unknown", None
     finally:
-        await session.close()
+        session.detach()
 
     data[CONF_BASE_URL] = base_url
     return None, child_count

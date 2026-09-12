@@ -4,7 +4,7 @@ from datetime import timedelta
 
 DOMAIN = "parentvue"
 NAME = "ParentVUE"
-VERSION = "0.2.4"
+VERSION = "0.2.5"
 
 CONF_BASE_URL = "base_url"
 
