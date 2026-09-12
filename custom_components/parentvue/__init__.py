@@ -18,12 +18,13 @@ from homeassistant.helpers.typing import ConfigType
 
 from .api import ParentVueClient
 from .const import (
+    BROWSER_ACCEPT,
+    BROWSER_USER_AGENT,
     CONF_BASE_URL,
     DASHBOARD_CARD_RESOURCE_URL,
     DASHBOARD_CARD_URL,
     DOMAIN,
     PLATFORMS,
-    VERSION,
 )
 from .coordinator import ParentVueDataUpdateCoordinator
 
@@ -76,7 +77,8 @@ async def async_setup_entry(
         hass,
         cookie_jar=aiohttp.CookieJar(),
         headers={
-            "User-Agent": f"HomeAssistant-ParentVUE/{VERSION}",
+            "User-Agent": BROWSER_USER_AGENT,
+            "Accept": BROWSER_ACCEPT,
             "Accept-Language": "en-US,en;q=0.9",
         },
     )

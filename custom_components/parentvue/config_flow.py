@@ -26,7 +26,13 @@ from .api import (
     ParentVueUnsupportedDeployment,
     normalize_base_url,
 )
-from .const import CONF_BASE_URL, DEFAULT_BASE_URL, DOMAIN, VERSION
+from .const import (
+    BROWSER_ACCEPT,
+    BROWSER_USER_AGENT,
+    CONF_BASE_URL,
+    DEFAULT_BASE_URL,
+    DOMAIN,
+)
 
 USER_SCHEMA = vol.Schema(
     {
@@ -71,7 +77,8 @@ async def _validate(
         flow.hass,
         cookie_jar=aiohttp.CookieJar(),
         headers={
-            "User-Agent": f"HomeAssistant-ParentVUE/{VERSION}-config-flow",
+            "User-Agent": BROWSER_USER_AGENT,
+            "Accept": BROWSER_ACCEPT,
             "Accept-Language": "en-US,en;q=0.9",
         },
     )

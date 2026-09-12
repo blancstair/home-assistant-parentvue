@@ -3,6 +3,32 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.2.4 - 2026-09-11
+
+### Fixed
+
+- Changed ParentVUE website sessions to use a browser-compatible request
+  fingerprint. The standalone website probe authenticated successfully with a
+  browser-style User-Agent, while the Home Assistant client had been using an
+  API-style User-Agent.
+- Made the ASP.NET login POST more closely match the normal website request by
+  including browser-compatible Origin/Referer/form headers.
+- Changed authenticated-page HTTP 401/403 handling so it is not automatically
+  mislabeled as a bad username/password.
+
+### Diagnostics
+
+- Added debug-only authentication-stage metadata containing only URL paths,
+  booleans, and cookie *names*. Credential values, cookie values, HTML, and
+  student data are never logged.
+- Updated the config-flow authentication message so it describes a rejected or
+  returned-to-login result instead of claiming the password is certainly wrong.
+
+### Packaging
+
+- Removed GitHub publishing/update instruction files from the release source.
+  Repository-management instructions remain outside release packages.
+
 ## 0.2.3 - 2026-09-11
 
 ### Fixed

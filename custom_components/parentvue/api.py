@@ -157,7 +157,9 @@ class ParentVueClient:
                 if response.status >= 500:
                     raise ParentVueConnectionError("ParentVUE server returned an error")
                 if response.status in (401, 403):
-                    raise ParentVueInvalidAuth("ParentVUE rejected authentication")
+                    if allow_login_page:
+                        raise ParentVueInvalidAuth("ParentVUE rejected authentication")
+                    raise ParentVueSessionExpired("ParentVUE session was rejected")
                 response.raise_for_status()
                 body = await response.text(errors="replace")
                 final_url = str(response.url)
@@ -182,7 +184,12 @@ class ParentVueClient:
             async with self._session.post(
                 url,
                 data=data,
-                headers={"Referer": referer},
+                headers={
+                    "Referer": referer,
+                    "Origin": self.base_url,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Upgrade-Insecure-Requests": "1",
+                },
                 allow_redirects=True,
             ) as response:
                 if response.status >= 500:
@@ -373,12 +380,28 @@ class ParentVueClient:
         action = str(form.get("action", "")) or login_url
         post_url = urljoin(login_url, action)
 
+        _LOGGER.debug(
+            "Submitting ParentVUE website login form to path %s; cookie names before submit: %s",
+            urlsplit(post_url).path,
+            sorted(cookie.key for cookie in self._session.cookie_jar),
+        )
+
         home_html, final_url = await self._post_form(
             post_url, data, referer=login_url
         )
 
-        if self._looks_like_login(final_url, home_html):
-            raise ParentVueInvalidAuth("Invalid ParentVUE credentials")
+        returned_to_login = self._looks_like_login(final_url, home_html)
+        _LOGGER.debug(
+            "ParentVUE login result path: %s; returned_to_login=%s; cookie names after submit: %s",
+            urlsplit(final_url).path,
+            returned_to_login,
+            sorted(cookie.key for cookie in self._session.cookie_jar),
+        )
+
+        if returned_to_login:
+            raise ParentVueInvalidAuth(
+                "ParentVUE returned to the login page after authentication"
+            )
 
         if "home_pxp2.aspx" not in urlsplit(final_url).path.casefold():
             # Some deployments may use a different authenticated landing path.
