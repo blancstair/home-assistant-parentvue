@@ -3,6 +3,49 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.3.0 - 2026-09-11
+
+### Added
+
+- Per-child configuration for the bundled ParentVUE dashboard card.
+- Visual card editor with grouped controls for student, assignment, schedule,
+  course, attendance, and Synergy Mail sections.
+- Student name as the default single-child card header, with optional custom
+  title override.
+- Configurable missing-assignment alert threshold and alert color.
+- Full today's-schedule section with optional period, teacher, room, time,
+  delivery-mode, and current-class highlighting.
+- Separate ParentVUE letter-grade and published-percentage entities.
+- Stable per-course entities for course name, grade, percentage, teacher, room,
+  period, marking period, missing assignments, delivery mode, and last update.
+- Stable current/next-class field entities for period, teacher, room, start/end
+  time, and delivery mode.
+- Today's attendance collection/count entities and school-year attendance
+  summary/count entities when the district response can be normalized.
+- Account-level unread Synergy Mail sensor when ParentVUE exposes a recognized
+  unread indicator.
+- Student-name and complete-today-schedule entities for flexible custom
+  dashboards outside the bundled card.
+
+### Changed
+
+- The dashboard is now entity-first: the card reads Home Assistant entities and
+  does not have a private data path to ParentVUE.
+- Existing course-grade, missing-assignment, current-class, and next-class unique
+  IDs are retained for registry continuity.
+- Feature-specific attendance failures are non-fatal and do not discard valid
+  Grade Book or schedule data.
+- Individual attendance events are exposed as structured attributes instead of
+  creating high-churn entity-registry entries.
+- Schedule and course delivery-mode displays now distinguish Online and In person.
+
+### Privacy
+
+- Synergy Mail content is not retrieved.
+- Diagnostics continue to omit student/course names, grades, attendance details,
+  identifiers, credentials, cookie values, and raw responses.
+- The two-hour minimum ParentVUE network interval remains unchanged.
+
 ## 0.2.5 - 2026-09-11
 
 ### Fixed

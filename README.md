@@ -2,7 +2,7 @@
 
 A privacy-conscious Home Assistant custom integration for **Edupoint ParentVUE**.
 
-Current version: **0.2.5**
+Current version: **0.3.0**
 
 > This project is independent and is not affiliated with Edupoint or any school district.
 
@@ -11,65 +11,95 @@ Current version: **0.2.5**
 - normal ParentVUE **website** authentication
 - automatic multi-child discovery
 - one Home Assistant device per child
-- Grade Book course sensors
-- missing-assignment summary
-- current/next-class sensors
+- configurable per-child ParentVUE dashboard card with visual editor
+- ParentVUE letter grades and published percentages as separate entities
+- aggregate and per-course missing-assignment sensors
+- current class, next class, and full today's schedule
+- best-effort current-day and school-year attendance
+- account-level unread Synergy Mail count when ParentVUE exposes it
 - conservative two-hour server polling floor
 - UI config flow and reauthentication
 - privacy-preserving diagnostics
-- bundled **ParentVUE Dashboard** card
 - HACS-ready repository layout
 
-Development was initially validated against Chesapeake Public Schools ParentVUE:
+Development was initially validated against Chesapeake Public Schools ParentVUE.
 
-`https://va-cps-psv.edupoint.com`
+## Dashboard card
 
-## Dashboard
-
-Version 0.2.5 ships a frontend card with the integration itself:
+The integration ships the custom card:
 
 `custom:parentvue-dashboard-card`
 
-It automatically discovers ParentVUE devices and entities and displays each
-child's school/grade, missing-assignment count, current/next class, and courses.
+The card reads Home Assistant entities only. It never contacts ParentVUE directly.
 
-No separate dashboard-card repository is required.
+The visual card editor can select **All children** or one child and can independently
+show or hide student, assignment, schedule, course, attendance, and Synergy Mail
+sections. When one child is selected, the default card header is that student's
+Home Assistant device name. A custom title can override it.
 
-See [`docs/HELP.md`](docs/HELP.md) for setup instructions.
+The missing-assignment alert threshold is a configurable non-negative integer.
+The alert activates when the missing count is **greater than** the configured
+threshold. Its alert color is also configurable.
+
+## Entities
+
+Stable values are exposed as Home Assistant sensor entities so dashboards and
+automations do not depend on the bundled card.
+
+Per child, the integration can expose:
+
+- student name, school, and grade level
+- aggregate missing-assignment count
+- today's schedule collection
+- current and next class
+- current/next period, teacher, room, start time, end time, and delivery mode
+- today's attendance collection and numeric attendance counts
+- school-year attendance summary and numeric attendance totals
+- for each stable course: course name, ParentVUE letter grade, ParentVUE
+  percentage, teacher, room, period, marking period, missing assignments,
+  delivery mode, and last-updated label
+
+An unread Synergy Mail count is exposed as an **account-level** sensor when the
+website publishes a reliably parseable unread indicator. It is intentionally not
+assigned to an individual child.
+
+Repeating/high-churn records such as individual attendance events are retained as
+attributes on collection entities rather than creating large numbers of stale
+entity-registry entries.
+
+## Grade handling
+
+ParentVUE remains the authority for both grade values. The integration does not
+calculate a letter grade from a percentage. If ParentVUE publishes only one of
+the two values, only that value is exposed.
+
+## Attendance and mail status
+
+Attendance and Synergy Mail vary across ParentVUE deployments. These features are
+best-effort and non-fatal: if a district does not expose a recognized response,
+the related entities remain unavailable while Grade Book and schedule data
+continue to update.
+
+Message contents are never retrieved or exposed by the current integration.
 
 ## Installation
 
 ### HACS custom repository
 
-1. Open HACS.
-2. Open **Custom repositories**.
-3. Add this GitHub repository URL as type **Integration**.
-4. Install ParentVUE.
-5. Restart Home Assistant.
-6. Open **Settings → Devices & services → Add integration**.
-7. Search for **ParentVUE**.
+Add this repository to HACS as an **Integration**, install ParentVUE, restart
+Home Assistant, then open **Settings → Devices & services → Add integration**
+and search for **ParentVUE**.
 
 ### Manual
 
-Copy:
-
-`custom_components/parentvue`
-
-to:
-
-`/config/custom_components/parentvue`
-
-and restart Home Assistant.
+Copy `custom_components/parentvue` to
+`/config/custom_components/parentvue`, restart Home Assistant, then add the
+integration from the Home Assistant UI.
 
 ## Configuration
 
-Setup is entirely through the Home Assistant UI.
-
-Required fields:
-
-- district/base URL
-- ParentVUE username
-- ParentVUE password
+Setup is entirely through the Home Assistant UI. Enter the district/base URL and
+your normal ParentVUE website username and password.
 
 Credentials must never be put in YAML, source code, screenshots, public issues,
 or test fixtures.
@@ -79,67 +109,40 @@ or test fixtures.
 The integration will not automatically contact ParentVUE more frequently than
 once every two hours.
 
-- scheduled interval: 2 hours 1 minute
-- hard network minimum: 2 hours
+- scheduled interval: **2 hours 1 minute**
+- hard network minimum: **2 hours**
 - all entities share one coordinator
-- current/next-class state can change locally from cached schedule data without
-  a ParentVUE request
+- current/next-class state is recalculated locally from cached schedule data
+- local class-state updates do not contact ParentVUE
 
 ## Privacy and security
 
-This project handles children's educational records.
+ParentVUE handles children's educational records. This integration adds no
+telemetry and sends ParentVUE data only between Home Assistant and the configured
+district website.
 
-It does not add telemetry and does not send ParentVUE data to an external
-service.
+Diagnostics intentionally omit credentials, cookie values, student/course
+details, grades, assignment content, attendance details, mail content, and raw
+ParentVUE responses.
 
-Diagnostics intentionally omit student/course details and credentials.
-
-Read [`SECURITY.md`](SECURITY.md) before filing issues involving authentication
-or student data.
+Read [`SECURITY.md`](SECURITY.md) before reporting authentication or student-data
+issues.
 
 ## Documentation
 
 - [Full help and user guide](docs/HELP.md)
-- [GitHub web publishing guide](GITHUB_WEB_PUBLISH.md)
 - [Research notes](RESEARCH_NOTES.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Dashboard YAML](dashboard/parentvue_dashboard.yaml)
 
-## Current 0.2.5 entities
-
-Per child:
-
-- School
-- Grade level
-- Missing assignments
-- Current class
-- Next class
-- One course-grade sensor per discovered Grade Book course
-
-Assignment details, attendance, calendars, messages, report cards, GPA, and
-change events remain planned work and will only be added after their website
-schemas are validated.
-
-## Versioning
-
-Semantic versioning is used from the beginning.
-
-GitHub releases should use tags such as:
-
-`v0.2.5`
-
-The integration manifest version is:
-
-`0.2.5`
-
 ## Development principles
 
-- prefer structured ParentVUE website/API calls over visual HTML scraping
-- do not invent endpoints or response structures
-- isolate ParentVUE parsing/network logic from Home Assistant entity code
-- never log credentials or full ParentVUE responses
+- prefer structured ParentVUE website interfaces over rendered-HTML parsing
+- do not infer educational values ParentVUE does not publish
+- isolate ParentVUE network/parsing logic from Home Assistant entity code
+- never log credentials, cookie values, or raw ParentVUE responses
 - avoid exposing raw student identifiers
 - keep ParentVUE polling conservative
-- use modern Home Assistant UI configuration and current `action` terminology
+- use current Home Assistant `action` terminology in examples

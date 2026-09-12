@@ -38,6 +38,19 @@ async def async_get_config_entry_diagnostics(
         "schedule_available": (
             [child.schedule_available for child in data.children] if data else []
         ),
+        "attendance_today_available": (
+            [child.attendance_today.available for child in data.children]
+            if data
+            else []
+        ),
+        "attendance_year_available": (
+            [child.attendance_year.available for child in data.children]
+            if data
+            else []
+        ),
+        "synergy_mail_available": (
+            data.synergy_mail_available if data else False
+        ),
         "polling_policy": {
             "automatic_interval": "2 hours 1 minute",
             "minimum_network_interval": "2 hours",

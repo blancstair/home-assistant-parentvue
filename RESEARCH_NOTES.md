@@ -1,66 +1,32 @@
 # ParentVUE Research Notes
 
 These notes separate behavior verified against the Chesapeake Public Schools
-deployment from behavior that remains reverse-engineered or unimplemented.
+ParentVUE deployment from behavior that remains best-effort or deferred.
 
-## Verified against Chesapeake ParentVUE
+## Verified website workflow
 
-Base URL used during development:
+Development was initially validated against Chesapeake Public Schools ParentVUE.
 
-`https://va-cps-psv.edupoint.com`
+### Authentication
 
-### Service surface
+The normal website login is an ASP.NET form under
+`/PXP2_Login_Parent.aspx?regenerateSessionId=true`. A successful login redirects
+to `/Home_PXP2.aspx`.
 
-The district exposes:
+The integration discovers the actual login field names and ASP.NET hidden fields
+at runtime. ParentVUE student selectors are rendered as
+`.student-info[data-agu]`. The `AGU` value is treated only as the website's child
+context/index.
 
-`/Service/PXPCommunication.asmx`
-
-Its service-description page advertises operations including:
-
-- `AuthenticateUser`
-- `GetWidgetData`
-- `ProcessWebServiceRequest`
-- `ProcessWebServiceRequestMultiWeb`
-- `ProcessWebServiceRequestMultiWeb2`
-- `ProcessWebServiceRequestMultiWeb3`
-- `ValidUser`
-
-The current integration does **not** use these mobile-oriented login methods.
-
-### ParentVUE website authentication
-
-The normal website login page is:
-
-`/PXP2_Login_Parent.aspx?regenerateSessionId=true`
-
-A successful parent login redirects to:
-
-`/Home_PXP2.aspx`
-
-The website uses an ASP.NET form containing ViewState/EventValidation fields and
-normal username/password fields. Version 0.1.0 discovers the actual field names
-from the form instead of hard-coding them.
-
-### Multiple children
-
-The authenticated website renders one `.student-info[data-agu]` selector per
-available child.
-
-The ParentVUE JavaScript `loadStudent()` implementation changes the current
-student context with the `AGU` query parameter. Version 0.1.0 follows that
-website behavior.
-
-Raw student IDs are not exposed by the integration. They are hashed immediately
-and only the privacy-preserving hash is used for Home Assistant device/entity
-unique identifiers.
+Raw student identifiers are never exposed as Home Assistant identifiers. Where a
+raw student ID is available in the page, it is immediately hashed into a
+privacy-preserving key.
 
 ### Grade Book
 
-The website Grade Book is:
+The website Grade Book is `/PXP2_Gradebook.aspx`.
 
-`/PXP2_Gradebook.aspx`
-
-Verified summary structures include:
+Observed summary structures include:
 
 - `.gb-class-header`
 - `.course-title`
@@ -70,56 +36,57 @@ Verified summary structures include:
 - `.last-update`
 - missing-assignment summary text
 
-The website also uses structured JSON methods under:
+Version 0.3.0 keeps ParentVUE's letter-grade label separate from any percentage
+published in the Grade Book. It never computes a letter grade from the numeric
+percentage.
 
-`/service/PXP2Communication.asmx/`
-
-Observed methods include:
-
-- `GradebookFocusClassInfo`
-- `LoadControl`
-
-`LoadControl` was observed with the control:
-
-`Gradebook_ClassDetails`
-
-The detailed class response contains Grade Book percentage/category/assignment
-grid structures. Version 0.1.0 intentionally does not request those per-course
-detail controls yet in order to keep the first release conservative.
+The site also uses structured methods under
+`/service/PXP2Communication.asmx/`, including observed
+`GradebookFocusClassInfo` and `LoadControl` calls. Detailed assignment/category
+normalization remains deferred until stable request/response contracts are
+validated.
 
 ### Daily schedule
 
-The website uses:
+The website uses `/Service/PXP2WebCommonService.asmx/DayContent` with a JSON date
+request. Observed response fields include class name, period, teacher, room,
+start/end information, and online-course status.
 
-`/Service/PXP2WebCommonService.asmx/DayContent`
-
-with a JSON date request. The response contains structured school/class data
-including:
-
-- class name
-- period
-- teacher
-- room
-- start/end date and time
-- online-course flag
-
-Version 0.1.0 uses this structured endpoint for cached current/next-class data.
+Version 0.3.0 exposes the complete cached schedule plus current/next class and
+stable field entities. Current/next state is recalculated locally and does not
+increase ParentVUE polling.
 
 ### Attendance
 
-Observed structured method:
+The structured method
+`/service/PXP2Communication.asmx/AttGetCalendarDay` was observed in website
+research, with daily/period attendance structures including reason, course,
+teacher, room, period, and attendance reason type.
 
-`/service/PXP2Communication.asmx/AttGetCalendarDay`
+Version 0.3.0 adds conservative, non-fatal attendance support. It attempts to
+normalize current-day event structures and server-rendered school-year totals.
+District-specific attendance labels and payload differences may cause those
+entities to remain unavailable. Grade Book and schedule data continue working
+when attendance cannot be normalized.
 
-Observed response structures include daily/period summaries, reasons, course,
-teacher, room, period, and attendance reason types.
+Cumulative attendance interpretation should continue to be validated against
+additional districts before stronger cross-district guarantees are made.
 
-Attendance entities are deferred until the meaning of district-specific reason
-types and cumulative-count behavior is validated.
+### Synergy Mail
+
+Captured website traffic confirmed an unread-message count call under
+`/st_api/ST.Messaging/GetUnreadMessageCount` using a portal query parameter and
+form-encoded request data. The sanitized capture intentionally removed the
+portal value and response scalar values.
+
+Version 0.3.0 therefore does not guess the redacted portal value. It exposes an
+account-level unread count only when a reliably parseable unread indicator is
+present in authenticated website HTML. Message-list and message-detail APIs are
+not used, and message content is not retrieved.
 
 ### Other observed website interfaces
 
-Observed during website research:
+Observed during website research include:
 
 - `/service/PXP2Communication.asmx/DXDataGridRequest`
 - `/Home_PXP2.aspx/LoadCounselorData`
@@ -130,19 +97,20 @@ Observed during website research:
 The website also exposes server-rendered pages for report cards, student
 information, school information, documents, messages, and other modules.
 
-## Remaining unknowns / deferred reverse engineering
+## Deferred / not inferred
 
-The following are deliberately not guessed in 0.1.0:
+The integration deliberately does not invent unsupported semantics. Remaining
+areas include:
 
 - exact individual-assignment missing/late/exempt semantics
 - reliable due-today/due-tomorrow/upcoming assignment normalization
-- cumulative absence/tardy calculations across grading periods
-- overall GPA availability/meaning
-- structured report-card document API
-- Synergy Mail message-list/message-detail API contract
+- detailed assignment/category data with stable assignment identifiers
+- structured report-card document access
+- Synergy Mail message list/detail data
 - school-calendar event normalization
-- stable identifiers for assignment-level change detection
-- semester/year transition behavior for course entity cleanup
+- GPA meaning/availability across districts
+- robust semester/year transition cleanup for dynamic course entities
+- persisted grade/assignment/attendance change-detection events
 
-These areas should be added only after real responses have been observed and
-sanitized fixtures/tests are available.
+New fields should be added only when their website behavior can be observed and
+tested without exposing real student records.

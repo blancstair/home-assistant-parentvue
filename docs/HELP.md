@@ -1,32 +1,12 @@
 # ParentVUE for Home Assistant — Help & User Guide
 
-This guide applies to **ParentVUE integration 0.2.5**.
+This guide applies to **ParentVUE integration 0.3.0**.
 
 ## What this integration does
 
-ParentVUE connects Home Assistant directly to your school district's Edupoint
-ParentVUE website. It uses the same normal ParentVUE website account that a
-parent uses in a browser.
-
-The integration does **not** require Nabu Casa, does not send school records to
-another cloud service, and does not add telemetry.
-
-## Current data
-
-Version 0.2.5 currently exposes:
-
-- one Home Assistant device per discovered child
-- school
-- grade level
-- aggregate missing-assignment count
-- course-grade sensors
-- current class
-- next class
-- cached daily schedule data used by the class sensors
-
-Detailed assignment lists, attendance totals, calendars, messages, report cards,
-GPA, and change-detection events are planned but intentionally deferred until
-their website schemas have been validated.
+ParentVUE connects Home Assistant directly to a district's Edupoint ParentVUE
+website using the normal parent website account. It does not require another
+cloud service, does not add telemetry, and does not expose raw student IDs.
 
 ## Polling policy
 
@@ -35,204 +15,109 @@ ParentVUE is intentionally treated conservatively.
 - scheduled ParentVUE refresh: **2 hours 1 minute**
 - hard minimum between ParentVUE network refreshes: **2 hours**
 - manual entity refreshes inside the safety window return cached data
-- current/next class state is recalculated locally from cached schedule data
+- current/next class state is recalculated locally once per minute from the
+  cached daily schedule
 - local class-state updates do not contact ParentVUE
-
-## Installation with HACS
-
-After this repository is published at `https://github.com/blancstair/home-assistant-parentvue`:
-
-1. Open HACS in Home Assistant.
-2. Open the three-dot menu.
-3. Select **Custom repositories**.
-4. Paste the GitHub repository URL.
-5. Select **Integration**.
-6. Install **ParentVUE**.
-7. Restart Home Assistant.
-8. Go to **Settings → Devices & services → Add integration**.
-9. Search for **ParentVUE**.
-
-HACS installs custom integrations under `custom_components/`. A public GitHub
-repository with the standard HACS integration layout is required for normal HACS
-distribution.
-
-## Manual installation
-
-Copy:
-
-`custom_components/parentvue`
-
-to:
-
-`/config/custom_components/parentvue`
-
-Restart Home Assistant, then add ParentVUE from **Settings → Devices & services**.
 
 ## Configuration
 
-The UI setup asks for:
-
-- ParentVUE district URL
-- ParentVUE username
-- ParentVUE password
-
-For Chesapeake Public Schools:
-
-`https://va-cps-psv.edupoint.com`
-
-Use the base district URL, not a particular Grade Book or login-page URL.
+Add ParentVUE from **Settings → Devices & services → Add integration**. Enter the
+district ParentVUE base URL plus the normal ParentVUE website username and
+password.
 
 The password is stored in Home Assistant's config entry so the integration can
-reauthenticate after the ParentVUE website session expires. It is not exposed as
-an entity or diagnostic value.
+reauthenticate when the website session expires. It is not exposed as an entity
+or diagnostic value.
 
-## ParentVUE Dashboard
+## ParentVUE Dashboard card
 
-Version 0.2.5 bundles a custom card named:
+The integration includes **ParentVUE Dashboard**. Add it through a dashboard's
+card picker or use a Manual card with:
 
-**ParentVUE Dashboard**
+```yaml
+type: custom:parentvue-dashboard-card
+```
 
-The JavaScript is shipped inside the integration and loaded by Home Assistant.
-There is no second HACS frontend repository to install.
+The card has a visual editor. The **Child** selector can display all children or
+one selected ParentVUE child device.
 
-### Create a dedicated dashboard
+For a single-child card, the default header is the student's device name. Leave
+the custom title blank to use that name. A custom title overrides it.
 
-1. Go to **Settings → Dashboards**.
-2. Create a new dashboard named **ParentVUE**.
-3. Open it and enter edit mode.
-4. Add a card.
-5. Search for **ParentVUE Dashboard** under custom/community cards.
-6. Add it.
+The editor provides grouped switches for school/grade, assignments, current and
+next class, today's full schedule, schedule details, course grades and details,
+attendance, and unread Synergy Mail.
 
-The card automatically discovers ParentVUE entities from Home Assistant's entity
-and device registries. You do not need to type your children's entity IDs.
+### Missing-assignment alert
 
-A ready-to-paste raw dashboard example is also included at:
+The editor includes:
 
-`dashboard/parentvue_dashboard.yaml`
+- **Alert when missing count is greater than** — a configurable integer
+- **Alert color** — a color picker
 
-### Dashboard contents
+For example, a threshold of `1` highlights the missing-assignment block at `2`
+or more. A threshold of `0` highlights any missing assignment.
 
-For each ParentVUE child device, the card displays:
+### Course grades
 
-- child/device name
-- school and grade level
-- missing-assignment count
-- current class
-- next class
-- discovered course grades
+Letter grade and percentage are separate controls and separate Home Assistant
+entities. ParentVUE is authoritative; Home Assistant does not calculate one from
+the other.
 
-Clicking a metric or course opens Home Assistant's normal More Info dialog.
+### Today's schedule
 
-The dashboard card never contacts ParentVUE itself. It only reads entities
-already maintained by the backend integration.
+The full schedule uses the same cached schedule already maintained by the
+integration. Display options include period, teacher, room, times, delivery mode,
+and current-class highlighting. Showing the schedule does not increase
+ParentVUE polling.
 
-## Updating
+### Attendance
 
-When installed through HACS, use HACS to install newer GitHub releases.
+The card can show both today's attendance and a school-year summary. Attendance
+website schemas vary between districts, so attendance entities are available
+only when the configured ParentVUE deployment returns a recognized structure.
+Attendance failure does not make Grade Book or schedule entities unavailable.
 
-The project uses semantic versioning:
+### Synergy Mail
 
-- patch: bug fixes, e.g. `0.2.5`
-- minor: backward-compatible features, e.g. `0.3.0`
-- major: breaking changes, e.g. `1.0.0`
+The card can show an account-level unread Synergy Mail count when ParentVUE
+publishes a recognized unread indicator. It is account-level rather than
+artificially assigned to a child. Message subjects, senders, and bodies are not
+retrieved by this version.
 
-## Diagnostics
+## Entity model
 
-Open:
+Version 0.3.0 exposes stable ParentVUE values as entities so you can use the
+bundled card, ordinary Home Assistant cards, templates, and automations.
 
-**Settings → Devices & services → ParentVUE → three-dot menu → Download diagnostics**
+Per child, available sensors include student name, school, grade level, aggregate
+missing assignments, full today's schedule, current/next class and their stable
+fields, attendance summaries/counts, and stable per-course fields such as course
+name, letter grade, percentage, teacher, room, period, marking period, missing
+assignments, delivery mode, and last-updated label.
 
-Diagnostics intentionally exclude:
+Individual attendance events are stored in the `Attendance today` sensor's
+`events` attribute. This avoids creating transient entity-registry entries for
+every event.
 
-- username
-- password
-- raw ParentVUE cookies
-- raw HTML/API responses
-- student names
-- raw student identifiers
-- course names
-- grades
-- assignment contents
+## Privacy
 
-Useful diagnostics include only counts, update state, and polling-policy status.
+Do not post credentials, cookie values, raw HAR files, raw authenticated
+HTML/XML/JSON, student IDs, student records, or message contents to a public
+issue.
+
+Home Assistant diagnostics intentionally contain only privacy-preserving status
+and count metadata.
 
 ## Troubleshooting
 
-### ParentVUE does not appear after installation
+If the dashboard card is missing after an update, restart Home Assistant and
+hard-refresh the browser/app frontend.
 
-Restart Home Assistant after installing or updating the custom integration.
-If installed through HACS and it still does not appear, hard-refresh the browser.
+If entities are unavailable, check the ParentVUE integration entry first.
+Feature-specific attendance or schedule failures are designed to remain
+non-fatal where possible.
 
-### Invalid username or password
-
-Confirm the same credentials work on the district's normal ParentVUE website.
-Do not test against StudentVUE credentials or a student's SSO account.
-
-### Server unavailable
-
-ParentVUE districts periodically perform maintenance. A temporary outage should
-not require deleting/recreating the integration. Home Assistant will retry on a
-later coordinator refresh.
-
-### Entities are unavailable
-
-Check the ParentVUE integration entry first. If the coordinator cannot update,
-all dependent entities may be unavailable until a later successful refresh.
-
-A class-schedule endpoint failure can make current/next-class sensors unavailable
-without discarding otherwise valid Grade Book data.
-
-### Grade says Unknown
-
-A teacher/course may not publish a current mark, especially early in a grading
-period. ParentVUE itself can display `N/A`; this integration does not invent a
-grade where ParentVUE does not provide one.
-
-### Dashboard card is missing
-
-After updating from a version before 0.2.5:
-
-1. restart Home Assistant
-2. perform a hard browser refresh
-3. reopen the dashboard card picker
-
-The card is served from the integration itself at a local Home Assistant path.
-
-### Need debug logs?
-
-Do not post credentials, cookies, HAR files, raw ParentVUE responses, or
-unredacted student records to a public GitHub issue.
-
-If additional logging is added during development, it must remain metadata-only
-by default.
-
-## Reporting a bug
-
-Before opening a GitHub issue:
-
-1. confirm the district ParentVUE website itself is working
-2. note your Home Assistant version
-3. note the ParentVUE integration version
-4. download ParentVUE diagnostics
-5. remove any personal/school information you added manually
-6. include the exact Home Assistant traceback if there is one
-
-Never include:
-
-- ParentVUE password
-- session cookies
-- authentication tokens
-- raw HAR captures
-- student IDs
-- report-card documents
-- message contents
-
-## Development status
-
-This is an independent custom integration and is not affiliated with Edupoint or
-the school district.
-
-The current implementation is based on verified behavior of Chesapeake Public
-Schools' ParentVUE website plus documented observations in `RESEARCH_NOTES.md`.
-Unverified endpoints are not invented or silently assumed.
+If authentication fails, confirm the same account works on the district's normal
+ParentVUE website. Debug logs must remain metadata-only; never publish
+credentials, cookie values, or raw authenticated responses.

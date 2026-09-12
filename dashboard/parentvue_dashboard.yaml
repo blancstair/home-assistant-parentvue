@@ -8,4 +8,3 @@ views:
       - type: grid
         cards:
           - type: custom:parentvue-dashboard-card
-            title: ParentVUE

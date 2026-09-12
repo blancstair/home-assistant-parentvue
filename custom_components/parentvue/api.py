@@ -22,6 +22,9 @@ from bs4 import BeautifulSoup, Tag
 
 from .const import BROWSER_ACCEPT, BROWSER_USER_AGENT
 from .models import (
+    ParentVueAttendanceDay,
+    ParentVueAttendanceEvent,
+    ParentVueAttendanceYear,
     ParentVueChild,
     ParentVueClassMeeting,
     ParentVueCourse,
@@ -33,6 +36,8 @@ _LOGGER = logging.getLogger(__name__)
 _LOGIN_PATH = "/PXP2_Login_Parent.aspx?regenerateSessionId=true"
 _HOME_PATH = "/Home_PXP2.aspx"
 _GRADEBOOK_PATH = "/PXP2_Gradebook.aspx"
+_ATTENDANCE_PATH = "/PXP2_Attendance.aspx"
+_ATTENDANCE_DAY_PATH = "/service/PXP2Communication.asmx/AttGetCalendarDay"
 _DAY_CONTENT_PATH = "/Service/PXP2WebCommonService.asmx/DayContent"
 
 _RE_MISSING = re.compile(r"(\d+)\s+Missing\s+Assignment", re.IGNORECASE)
@@ -113,6 +118,19 @@ def _percentage(value: str | None) -> float | None:
         return None
     match = re.search(r"(-?\d+(?:\.\d+)?)\s*%", value)
     return float(match.group(1)) if match else None
+
+
+def _grade_label(value: str | None) -> str | None:
+    """Return ParentVUE's grade label without an embedded percentage.
+
+    ParentVUE remains authoritative for the grade label; the integration never
+    calculates a letter grade from the percentage.
+    """
+    if not value:
+        return None
+    label = re.sub(r"-?\d+(?:\.\d+)?\s*%", "", value)
+    label = re.sub(r"^[\s·•|:/-]+|[\s·•|:/-]+$", "", label).strip()
+    return _normalize_optional(label)
 
 
 class ParentVueClient:
@@ -550,11 +568,19 @@ class ParentVueClient:
             if mark_row is not None:
                 mark_period = _normalize_optional(_text(mark_row.select_one(".course-markperiod")))
                 raw_grade = _text(mark_row.select_one(".mark"))
-                grade = _normalize_optional(raw_grade)
+                grade = _grade_label(raw_grade)
 
                 # Some ParentVUE deployments render the percentage directly in
-                # the summary mark; retain it when present.
+                # the summary mark; retain it when present. If the letter and
+                # percentage are separate, look only in elements explicitly
+                # identified as percentage/percent fields rather than scanning
+                # arbitrary row text.
                 percentage = _percentage(raw_grade)
+                if percentage is None:
+                    percent_node = mark_row.select_one(
+                        "[class*='percentage'], [class*='percent']"
+                    )
+                    percentage = _percentage(_text(percent_node))
 
                 less_emphasis = _text(mark_row.select_one(".class-item-lessemphasis"))
                 if less_emphasis:
@@ -584,6 +610,7 @@ class ParentVueClient:
                     percentage=percentage,
                     missing_assignments=missing,
                     last_updated=last_updated,
+                    is_online=None,
                 )
             )
 
@@ -709,10 +736,395 @@ class ParentVueClient:
                     percentage=course.percentage,
                     missing_assignments=course.missing_assignments,
                     last_updated=course.last_updated,
+                    is_online=meeting.is_online,
                 )
             )
 
         return tuple(enriched)
+
+
+    @staticmethod
+    def _parse_synergy_mail_unread(body: str | None) -> tuple[int | None, bool]:
+        """Parse the Synergy Mail navigation badge from authenticated HTML.
+
+        ParentVUE displays an unread indicator beside the Synergy Mail navigation
+        item. Only the count is retained; message subjects, senders and bodies are
+        deliberately ignored.
+        """
+        if not body:
+            return None, False
+
+        soup = BeautifulSoup(body, "html.parser")
+        labels = [
+            node
+            for node in soup.find_all(string=re.compile(r"\bSynergy\s+Mail\b", re.IGNORECASE))
+            if str(node).strip()
+        ]
+        if not labels:
+            return None, False
+
+        badge_tokens = ("badge", "count", "unread", "notification")
+
+        for label in labels:
+            element = label.parent if isinstance(label.parent, Tag) else None
+            depth = 0
+            while isinstance(element, Tag) and depth < 5:
+                # First, inspect explicit data/ARIA metadata.
+                for attr_name, attr_value in element.attrs.items():
+                    name = str(attr_name).casefold()
+                    if not any(token in name for token in badge_tokens):
+                        continue
+                    values = (
+                        attr_value
+                        if isinstance(attr_value, list)
+                        else [attr_value]
+                    )
+                    for value in values:
+                        match = re.search(r"\b(\d+)\b", str(value))
+                        if match:
+                            return int(match.group(1)), True
+
+                # Then inspect descendants whose class/id clearly denotes a badge.
+                for candidate in element.find_all(True):
+                    identity = " ".join(
+                        [
+                            str(candidate.get("id", "")),
+                            " ".join(str(x) for x in candidate.get("class", [])),
+                            str(candidate.get("aria-label", "")),
+                        ]
+                    ).casefold()
+                    if not any(token in identity for token in badge_tokens):
+                        continue
+                    text = _text(candidate)
+                    if text:
+                        match = re.search(r"\b(\d+)\b", text)
+                        if match:
+                            return int(match.group(1)), True
+
+                # Some themes render "Synergy Mail 3" directly in the nav item.
+                text = _text(element)
+                if text and len(text) <= 120:
+                    match = re.search(
+                        r"\bSynergy\s+Mail\b\D{0,30}\b(\d+)\b",
+                        text,
+                        re.IGNORECASE,
+                    )
+                    if match:
+                        return int(match.group(1)), True
+
+                element = element.parent if isinstance(element.parent, Tag) else None
+                depth += 1
+
+        # The navigation item exists but no unread badge is rendered. ParentVUE
+        # uses the badge as the unread indicator, so its absence represents zero.
+        return 0, True
+
+    @staticmethod
+    def _unwrap_json_payload(result: Any) -> Any:
+        """Unwrap ASP.NET JSON responses without logging private content."""
+        payload = result.get("d") if isinstance(result, dict) and "d" in result else result
+        if isinstance(payload, str):
+            try:
+                return json.loads(payload)
+            except json.JSONDecodeError:
+                return None
+        return payload
+
+    @staticmethod
+    def _normalized_mapping(mapping: dict[str, Any]) -> dict[str, Any]:
+        return {
+            re.sub(r"[^a-z0-9]", "", str(key).casefold()): value
+            for key, value in mapping.items()
+        }
+
+    @staticmethod
+    def _attendance_value(
+        normalized: dict[str, Any],
+        keys: tuple[str, ...],
+    ) -> str | None:
+        for key in keys:
+            value = normalized.get(key)
+            if value is None:
+                continue
+            if isinstance(value, (str, int, float)):
+                text = str(value).strip()
+                if text:
+                    return text
+        return None
+
+    @classmethod
+    def _parse_attendance_day(cls, result: Any) -> ParentVueAttendanceDay:
+        """Normalize a ParentVUE AttGetCalendarDay response conservatively."""
+        payload = cls._unwrap_json_payload(result)
+        if not isinstance(payload, (dict, list)):
+            return ParentVueAttendanceDay(False, (), 0, 0, 0, 0, 0)
+
+        candidate_dicts: list[dict[str, Any]] = []
+
+        def walk(value: Any) -> None:
+            if isinstance(value, dict):
+                normalized = cls._normalized_mapping(value)
+                key_blob = " ".join(normalized)
+                if (
+                    "attendance" in key_blob
+                    or "reason" in key_blob
+                    or (
+                        "period" in normalized
+                        and any(
+                            key in normalized
+                            for key in (
+                                "course",
+                                "coursename",
+                                "class",
+                                "classname",
+                                "teacher",
+                                "teachername",
+                            )
+                        )
+                    )
+                ):
+                    candidate_dicts.append(value)
+                for nested in value.values():
+                    walk(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    walk(nested)
+
+        walk(payload)
+
+        events: list[ParentVueAttendanceEvent] = []
+        seen: set[tuple[str | None, ...]] = set()
+
+        for candidate in candidate_dicts:
+            normalized = cls._normalized_mapping(candidate)
+            period = cls._attendance_value(
+                normalized,
+                ("period", "periodname", "periodnumber"),
+            )
+            course = cls._attendance_value(
+                normalized,
+                ("course", "coursename", "class", "classname"),
+            )
+            teacher = cls._attendance_value(
+                normalized,
+                ("teacher", "teachername"),
+            )
+            room = cls._attendance_value(
+                normalized,
+                ("room", "roomname"),
+            )
+            event_type = cls._attendance_value(
+                normalized,
+                (
+                    "attendancetype",
+                    "attendancereasontype",
+                    "reasontype",
+                    "attendancecode",
+                    "type",
+                ),
+            )
+            reason = cls._attendance_value(
+                normalized,
+                (
+                    "attendancereason",
+                    "reason",
+                    "reasonname",
+                    "attendancedescription",
+                    "description",
+                ),
+            )
+
+            # Do not manufacture an event from structural container dictionaries.
+            if not any((event_type, reason)):
+                continue
+
+            signature = (period, course, teacher, room, event_type, reason)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            events.append(
+                ParentVueAttendanceEvent(
+                    period=period,
+                    course=course,
+                    teacher=teacher,
+                    room=room,
+                    event_type=event_type,
+                    reason=reason,
+                )
+            )
+
+        absences = 0
+        tardies = 0
+        excused = 0
+        unexcused = 0
+        dismissals = 0
+
+        for event in events:
+            text = " ".join(
+                value for value in (event.event_type, event.reason) if value
+            ).casefold()
+            if "unexcused" in text:
+                unexcused += 1
+            elif "excused" in text:
+                excused += 1
+
+            if "tard" in text:
+                tardies += 1
+            elif "dismiss" in text or "early release" in text:
+                dismissals += 1
+            elif "absen" in text:
+                absences += 1
+
+        return ParentVueAttendanceDay(
+            available=True,
+            events=tuple(events),
+            absences=absences,
+            tardies=tardies,
+            excused=excused,
+            unexcused=unexcused,
+            dismissals=dismissals,
+        )
+
+    @staticmethod
+    def _attendance_year_metric(
+        soup: BeautifulSoup,
+        aliases: tuple[str, ...],
+    ) -> int | None:
+        """Find a compact label/value pair in the attendance page."""
+        for tag in soup.find_all(["div", "span", "td", "th", "li", "p", "label"]):
+            if not isinstance(tag, Tag):
+                continue
+            own_text = _text(tag)
+            if not own_text or len(own_text) > 100:
+                continue
+
+            simplified = own_text.strip().strip(":").casefold()
+            for alias in aliases:
+                alias_cf = alias.casefold()
+
+                # Do not let the generic "Absences" label consume a more
+                # specific "Excused Absences" or "Unexcused Absences" count.
+                if (
+                    alias_cf == "absences"
+                    and re.search(
+                        r"\b(?:un)?excused\s+absences\b",
+                        own_text,
+                        re.IGNORECASE,
+                    )
+                ):
+                    continue
+
+                # Label and number in the same compact element.
+                match = re.search(
+                    rf"\b{re.escape(alias)}\b\s*:?\s*(\d+)\b",
+                    own_text,
+                    re.IGNORECASE,
+                )
+                if match:
+                    return int(match.group(1))
+
+                # Label in one cell, value in the sibling/row.
+                if simplified != alias_cf:
+                    continue
+
+                sibling = tag.find_next_sibling()
+                if isinstance(sibling, Tag):
+                    sibling_text = _text(sibling)
+                    if sibling_text:
+                        number = re.fullmatch(r"\s*(\d+)\s*", sibling_text)
+                        if number:
+                            return int(number.group(1))
+
+                row = tag.find_parent(["tr", "li"])
+                if isinstance(row, Tag):
+                    row_text = _text(row)
+                    if row_text and len(row_text) <= 140:
+                        number = re.search(
+                            rf"\b{re.escape(alias)}\b\s*:?\s*(\d+)\b",
+                            row_text,
+                            re.IGNORECASE,
+                        )
+                        if number:
+                            return int(number.group(1))
+
+        return None
+
+    @classmethod
+    def _parse_attendance_year(cls, body: str) -> ParentVueAttendanceYear:
+        """Parse cumulative attendance totals when the website renders them."""
+        soup = BeautifulSoup(body, "html.parser")
+
+        excused = cls._attendance_year_metric(
+            soup,
+            ("Excused Absences", "Excused"),
+        )
+        unexcused = cls._attendance_year_metric(
+            soup,
+            ("Unexcused Absences", "Unexcused"),
+        )
+        absences = cls._attendance_year_metric(
+            soup,
+            ("Total Absences", "Days Absent", "Absences"),
+        )
+        tardies = cls._attendance_year_metric(
+            soup,
+            ("Total Tardies", "Tardies"),
+        )
+        dismissals = cls._attendance_year_metric(
+            soup,
+            ("Early Dismissals", "Dismissals"),
+        )
+
+        available = any(
+            value is not None
+            for value in (absences, excused, unexcused, tardies, dismissals)
+        )
+        return ParentVueAttendanceYear(
+            available=available,
+            absences=absences,
+            excused_absences=excused,
+            unexcused_absences=unexcused,
+            tardies=tardies,
+            early_dismissals=dismissals,
+        )
+
+    async def _fetch_attendance(
+        self,
+        *,
+        child_index: int,
+        day: date,
+    ) -> tuple[ParentVueAttendanceDay, ParentVueAttendanceYear]:
+        """Fetch attendance without making attendance failure fatal to grades."""
+        empty_day = ParentVueAttendanceDay(False, (), 0, 0, 0, 0, 0)
+        empty_year = ParentVueAttendanceYear(False, None, None, None, None, None)
+
+        try:
+            attendance_html, _ = await self._get_text(
+                _ATTENDANCE_PATH,
+                params={"AGU": child_index},
+                referer=self._url(_HOME_PATH),
+            )
+            year = self._parse_attendance_year(attendance_html)
+        except ParentVueSessionExpired:
+            raise
+        except ParentVueError:
+            attendance_html = ""
+            year = empty_year
+
+        try:
+            result = await self._post_json(
+                _ATTENDANCE_DAY_PATH,
+                {"date": day.strftime("%m/%d/%Y")},
+                child_index=child_index,
+                referer_path=f"{_ATTENDANCE_PATH}?AGU={child_index}",
+            )
+            today = self._parse_attendance_day(result)
+        except ParentVueSessionExpired:
+            raise
+        except ParentVueError:
+            today = empty_day
+
+        return today, year
 
     async def _fetch_all_after_login(
         self,
@@ -759,6 +1171,23 @@ class ParentVueClient:
 
             courses = self._enrich_courses_with_schedule(courses, schedule)
 
+            # Attendance is optional. A feature-specific response mismatch must
+            # not discard otherwise valid grade/schedule data.
+            try:
+                attendance_today, attendance_year = await self._fetch_attendance(
+                    child_index=child_index,
+                    day=day,
+                )
+            except ParentVueSessionExpired:
+                raise
+            except ParentVueError:
+                attendance_today = ParentVueAttendanceDay(
+                    False, (), 0, 0, 0, 0, 0
+                )
+                attendance_year = ParentVueAttendanceYear(
+                    False, None, None, None, None, None
+                )
+
             children.append(
                 ParentVueChild(
                     key=str(child["key"]),
@@ -769,12 +1198,20 @@ class ParentVueClient:
                     courses=courses,
                     schedule=schedule,
                     schedule_available=schedule_available,
+                    attendance_today=attendance_today,
+                    attendance_year=attendance_year,
                 )
             )
+
+        synergy_mail_unread, synergy_mail_available = (
+            self._parse_synergy_mail_unread(self._last_home_html)
+        )
 
         return ParentVueData(
             children=tuple(children),
             fetched_at=datetime.now(),
+            synergy_mail_unread=synergy_mail_unread,
+            synergy_mail_available=synergy_mail_available,
         )
 
     async def async_fetch_data(self, day: date) -> ParentVueData:
