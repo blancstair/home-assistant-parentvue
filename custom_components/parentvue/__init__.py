@@ -21,6 +21,7 @@ from .const import (
     CONF_BASE_URL,
     DASHBOARD_CARD_RESOURCE_URL,
     DASHBOARD_CARD_URL,
+    DOMAIN,
     PLATFORMS,
     VERSION,
 )

@@ -3,6 +3,21 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.2.3 - 2026-09-11
+
+### Fixed
+
+- Fixed a runtime import failure that prevented the Home Assistant config flow
+  from loading. `DOMAIN` is now imported before it is used by
+  `CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)`.
+- This resolves the Home Assistant UI error:
+  `Config flow could not be loaded: {"message":"Invalid handler specified"}`.
+
+### Validation
+
+- Added a Ruff undefined-name/static-error check to GitHub Actions so this class
+  of import-time mistake is caught before release.
+
 ## 0.2.2 - 2026-09-11
 
 ### Fixed
