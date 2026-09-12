@@ -11,6 +11,17 @@ permissions:
   contents: read
 
 jobs:
+
+  python-static:
+    name: Python static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/ruff-action@v4.1.0
+        with:
+          args: "check --select F"
+          src: "custom_components/parentvue"
+
   hassfest:
     name: Hassfest
     runs-on: ubuntu-latest
