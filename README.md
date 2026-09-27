@@ -2,7 +2,7 @@
 
 A privacy-conscious Home Assistant custom integration for **Edupoint ParentVUE**.
 
-Current version: **0.3.0**
+Current version: **0.4.0**
 
 > This project is independent and is not affiliated with Edupoint or any school district.
 
@@ -14,6 +14,7 @@ Current version: **0.3.0**
 - configurable per-child ParentVUE dashboard card with visual editor
 - ParentVUE letter grades and published percentages as separate entities
 - aggregate and per-course missing-assignment sensors
+- per-course assignment rows with aggregate and per-course "Not Graded" (ungraded) sensors
 - current class, next class, and full today's schedule
 - best-effort current-day and school-year attendance
 - account-level unread Synergy Mail count when ParentVUE exposes it
@@ -50,6 +51,7 @@ Per child, the integration can expose:
 
 - student name, school, and grade level
 - aggregate missing-assignment count
+- past-due ungraded assignment count, with all ungraded rows as attributes
 - today's schedule collection
 - current and next class
 - current/next period, teacher, room, start time, end time, and delivery mode
@@ -57,6 +59,7 @@ Per child, the integration can expose:
 - school-year attendance summary and numeric attendance totals
 - for each stable course: course name, ParentVUE letter grade, ParentVUE
   percentage, teacher, room, period, marking period, missing assignments,
+  ungraded assignments (with the course's assignment rows as attributes),
   delivery mode, and last-updated label
 
 An unread Synergy Mail count is exposed as an **account-level** sensor when the
@@ -66,6 +69,16 @@ assigned to an individual child.
 Repeating/high-churn records such as individual attendance events are retained as
 attributes on collection entities rather than creating large numbers of stale
 entity-registry entries.
+
+## Assignments and "Not Graded"
+
+Each course's assignment grid is loaded through the same `Gradebook_ClassDetails`
+control the website uses. The `Ungraded assignments` sensors count assignments
+whose ParentVUE score column reads `Not Graded` and whose date is already past.
+ParentVUE's `Missing` flag is set manually by teachers and often lags; a
+past-due `Not Graded` row is the earlier signal that work may be outstanding.
+The integration reports ParentVUE's text as-is and does not infer submission
+status.
 
 ## Grade handling
 

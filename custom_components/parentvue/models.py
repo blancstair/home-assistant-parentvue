@@ -3,7 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ParentVueAssignment:
+    """One assignment row from a ParentVUE course Grade Book grid.
+
+    ``score`` is ParentVUE's own score-column text (for example ``Not Graded``
+    or ``8 out of 10``).  The integration never infers a status ParentVUE does
+    not publish; ``is_graded`` only reflects whether the score column contains
+    the literal ``Not Graded`` marker.
+    """
+
+    name: str
+    due_date: date | None
+    assignment_type: str | None
+    score: str | None
+    score_type: str | None
+    points: str | None
+    notes: str | None
+    is_graded: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +54,8 @@ class ParentVueCourse:
     missing_assignments: int | None
     last_updated: str | None
     is_online: bool | None = None
+    assignments: tuple[ParentVueAssignment, ...] = ()
+    assignments_available: bool = False
 
 
 @dataclass(frozen=True, slots=True)

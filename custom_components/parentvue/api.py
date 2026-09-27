@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup, Tag
 
 from .const import BROWSER_ACCEPT, BROWSER_USER_AGENT
 from .models import (
+    ParentVueAssignment,
     ParentVueAttendanceDay,
     ParentVueAttendanceEvent,
     ParentVueAttendanceYear,
@@ -39,6 +40,9 @@ _GRADEBOOK_PATH = "/PXP2_Gradebook.aspx"
 _ATTENDANCE_PATH = "/PXP2_Attendance.aspx"
 _ATTENDANCE_DAY_PATH = "/service/PXP2Communication.asmx/AttGetCalendarDay"
 _DAY_CONTENT_PATH = "/Service/PXP2WebCommonService.asmx/DayContent"
+_LOAD_CONTROL_PATH = "/service/PXP2Communication.asmx/LoadControl"
+_CLASS_DETAILS_CONTROL = "Gradebook_ClassDetails"
+_NOT_GRADED_MARKER = "not graded"
 
 _RE_MISSING = re.compile(r"(\d+)\s+Missing\s+Assignment", re.IGNORECASE)
 _RE_GRADE_PREFIX = re.compile(r"^\s*Grade\s*:?\s*", re.IGNORECASE)
@@ -703,6 +707,217 @@ class ParentVueClient:
         meetings.sort(key=lambda meeting: meeting.start)
         return tuple(meetings)
 
+    def _parse_class_focus_args(
+        self, body: str, *, child_key: str
+    ) -> dict[str, dict[str, Any]]:
+        """Map course keys to the ParentVUE ``Gradebook_ClassDetails`` focus args.
+
+        The Grade Book summary renders each course title as a button carrying a
+        ``data-focus`` JSON attribute that the website itself posts to
+        ``LoadControl``.  Reusing it verbatim avoids guessing identifiers.
+        """
+        soup = BeautifulSoup(body, "html.parser")
+        result: dict[str, dict[str, Any]] = {}
+
+        for header in soup.select(".gb-class-header.gb-class-row"):
+            raw_course_id = str(header.get("data-guid", "")).strip()
+            title = _text(header.select_one(".course-title"))
+            if not title:
+                continue
+            button = header.select_one("[data-focus]")
+            if button is None:
+                continue
+            try:
+                focus = json.loads(str(button.get("data-focus", "")))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(focus, dict):
+                continue
+            load_params = focus.get("LoadParams")
+            focus_args = focus.get("FocusArgs")
+            if (
+                not isinstance(load_params, dict)
+                or load_params.get("ControlName") != _CLASS_DETAILS_CONTROL
+                or not isinstance(focus_args, dict)
+            ):
+                continue
+
+            course_key = _privacy_key(self.base_url, child_key, raw_course_id or title)
+            result.setdefault(course_key, focus_args)
+
+        return result
+
+    @staticmethod
+    def _link_column_value(raw: Any) -> str | None:
+        """Return only the display text from a DevExpress ``LinkColumn`` cell.
+
+        The cell JSON also carries focus arguments with student identifiers;
+        those are intentionally discarded.
+        """
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            if stripped.startswith("{"):
+                try:
+                    raw = json.loads(stripped)
+                except json.JSONDecodeError:
+                    return _normalize_optional(stripped)
+            else:
+                return _normalize_optional(stripped)
+        if isinstance(raw, dict):
+            return _normalize_optional(str(raw.get("value", "") or ""))
+        return None
+
+    @staticmethod
+    def _assignment_date(value: Any) -> date | None:
+        """Parse the Grade Book grid date column (``M/D/YY`` or ``M/D/YYYY``)."""
+        if not isinstance(value, str) or not value.strip():
+            return None
+        text = value.strip()
+        for fmt in ("%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(text, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    @classmethod
+    def _parse_class_assignments(cls, body: str) -> tuple[ParentVueAssignment, ...]:
+        """Extract assignment rows from a ``Gradebook_ClassDetails`` control.
+
+        The control embeds a DevExpress grid configuration whose ``dataSource``
+        array is plain JSON even though the surrounding configuration object
+        references JavaScript functions.  Only the array is decoded.
+        """
+        anchor = body.find("AssignmentsGrid")
+        if anchor < 0:
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE class details did not contain an assignments grid"
+            )
+        marker = body.find('"dataSource":', anchor)
+        if marker < 0:
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE assignments grid did not contain a data source"
+            )
+        start = body.find("[", marker)
+        if start < 0:
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE assignments data source was not an array"
+            )
+        try:
+            rows, _ = json.JSONDecoder().raw_decode(body, start)
+        except json.JSONDecodeError as err:
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE assignments data source could not be decoded"
+            ) from err
+        if not isinstance(rows, list):
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE assignments data source was not a list"
+            )
+
+        assignments: list[ParentVueAssignment] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = cls._link_column_value(row.get("GBAssignment"))
+            if not name:
+                continue
+            score = cls._link_column_value(row.get("GBScore"))
+            assignments.append(
+                ParentVueAssignment(
+                    name=name,
+                    due_date=cls._assignment_date(row.get("Date")),
+                    assignment_type=_normalize_optional(
+                        str(row.get("GBAssignmentType") or "")
+                    ),
+                    score=score,
+                    score_type=_normalize_optional(str(row.get("GBScoreType") or "")),
+                    points=_normalize_optional(str(row.get("GBPoints") or "")),
+                    notes=_normalize_optional(str(row.get("GBNotes") or "")),
+                    is_graded=(score or "").casefold() != _NOT_GRADED_MARKER,
+                )
+            )
+
+        return tuple(assignments)
+
+    async def _fetch_course_assignments(
+        self,
+        *,
+        child_index: int,
+        focus_args: dict[str, Any],
+    ) -> tuple[ParentVueAssignment, ...]:
+        """Load one course's assignment grid via the website's own control call."""
+        result = await self._post_json(
+            _LOAD_CONTROL_PATH,
+            {
+                "request": {
+                    "control": _CLASS_DETAILS_CONTROL,
+                    "parameters": focus_args,
+                }
+            },
+            child_index=child_index,
+            referer_path=f"{_GRADEBOOK_PATH}?AGU={child_index}",
+        )
+        payload = self._unwrap_json_payload(result)
+        html_body: Any = None
+        if isinstance(payload, dict):
+            data = payload.get("Data")
+            if isinstance(data, dict):
+                html_body = data.get("html")
+        if not isinstance(html_body, str):
+            raise ParentVueUnsupportedDeployment(
+                "ParentVUE class details response was not recognized"
+            )
+        return self._parse_class_assignments(html_body)
+
+    async def _enrich_courses_with_assignments(
+        self,
+        courses: tuple[ParentVueCourse, ...],
+        *,
+        child_index: int,
+        focus_by_key: dict[str, dict[str, Any]],
+    ) -> tuple[ParentVueCourse, ...]:
+        """Attach assignment rows to each course; failures are per-course and non-fatal."""
+        enriched: list[ParentVueCourse] = []
+        for course in courses:
+            focus_args = focus_by_key.get(course.key)
+            if focus_args is None:
+                enriched.append(course)
+                continue
+            try:
+                assignments = await self._fetch_course_assignments(
+                    child_index=child_index,
+                    focus_args=focus_args,
+                )
+            except ParentVueSessionExpired:
+                raise
+            except ParentVueError:
+                _LOGGER.debug(
+                    "ParentVUE assignment details unavailable for one course"
+                )
+                enriched.append(course)
+                continue
+
+            enriched.append(
+                ParentVueCourse(
+                    key=course.key,
+                    name=course.name,
+                    teacher=course.teacher,
+                    room=course.room,
+                    period=course.period,
+                    mark_period=course.mark_period,
+                    grade=course.grade,
+                    percentage=course.percentage,
+                    missing_assignments=course.missing_assignments,
+                    last_updated=course.last_updated,
+                    is_online=course.is_online,
+                    assignments=assignments,
+                    assignments_available=True,
+                )
+            )
+        return tuple(enriched)
+
     @staticmethod
     def _enrich_courses_with_schedule(
         courses: tuple[ParentVueCourse, ...],
@@ -737,6 +952,8 @@ class ParentVueClient:
                     missing_assignments=course.missing_assignments,
                     last_updated=course.last_updated,
                     is_online=meeting.is_online,
+                    assignments=course.assignments,
+                    assignments_available=course.assignments_available,
                 )
             )
 
@@ -1153,6 +1370,17 @@ class ParentVueClient:
                 child_index=child_index,
                 fallback_name=str(child["name"]),
                 fallback_school=child.get("school"),
+            )
+
+            # Assignment rows are optional. Each course is loaded through the
+            # same LoadControl call the website makes; a per-course failure
+            # leaves that course without assignment data.
+            courses = await self._enrich_courses_with_assignments(
+                courses,
+                child_index=child_index,
+                focus_by_key=self._parse_class_focus_args(
+                    gradebook_html, child_key=str(child["key"])
+                ),
             )
 
             # Schedule is useful but optional. A temporary/feature-specific
