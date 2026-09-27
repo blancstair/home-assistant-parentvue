@@ -14,7 +14,12 @@ from homeassistant.util import dt as dt_util
 
 from . import ParentVueConfigEntry
 from .entity import ParentVueEntity
-from .models import ParentVueChild, ParentVueClassMeeting, ParentVueCourse
+from .models import (
+    ParentVueAssignment,
+    ParentVueChild,
+    ParentVueClassMeeting,
+    ParentVueCourse,
+)
 
 _LOCAL_STATE_REFRESH = timedelta(minutes=1)
 
@@ -28,6 +33,38 @@ def _find_course(child: ParentVueChild | None, course_key: str) -> ParentVueCour
 def _now_naive_local() -> datetime:
     """Return HA local time without tzinfo for district wall-clock comparisons."""
     return dt_util.now().replace(tzinfo=None)
+
+
+def _assignment_attributes(
+    assignment: ParentVueAssignment, course: ParentVueCourse | None = None
+) -> dict[str, Any]:
+    """Serialize one assignment row for entity attributes."""
+    data: dict[str, Any] = {
+        "name": assignment.name,
+        "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
+        "type": assignment.assignment_type,
+        "score": assignment.score,
+        "score_type": assignment.score_type,
+        "points": assignment.points,
+        "notes": assignment.notes,
+        "is_graded": assignment.is_graded,
+    }
+    if course is not None:
+        data["course"] = course.name
+    return data
+
+
+def _ungraded(course: ParentVueCourse) -> list[ParentVueAssignment]:
+    return [item for item in course.assignments if not item.is_graded]
+
+
+def _overdue_ungraded(course: ParentVueCourse, today: datetime) -> list[ParentVueAssignment]:
+    """Ungraded assignments whose ParentVUE date is strictly before today."""
+    return [
+        item
+        for item in _ungraded(course)
+        if item.due_date is not None and item.due_date < today.date()
+    ]
 
 
 def _current_meeting(child: ParentVueChild | None) -> ParentVueClassMeeting | None:
@@ -142,6 +179,65 @@ class ParentVueMissingAssignmentsSensor(ParentVueEntity, SensorEntity):
                 if (course.missing_assignments or 0) > 0
             ),
             "course_count": len(child.courses),
+        }
+
+
+class ParentVueUngradedAssignmentsSensor(ParentVueEntity, SensorEntity):
+    """Aggregate count of assignments ParentVUE lists as ``Not Graded``.
+
+    The state is the number of past-due ungraded assignments (the early signal
+    that usually precedes a teacher's ``Missing`` flag).  All ungraded rows are
+    listed in attributes.
+    """
+
+    _attr_name = "Ungraded assignments"
+
+    def __init__(self, coordinator, child_key: str) -> None:
+        super().__init__(coordinator, child_key)
+        self._attr_unique_id = f"{child_key}_ungraded_assignments"
+
+    @property
+    def available(self) -> bool:
+        child = self.child
+        return (
+            super().available
+            and child is not None
+            and any(course.assignments_available for course in child.courses)
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        child = self.child
+        if child is None:
+            return None
+        now = _now_naive_local()
+        return sum(len(_overdue_ungraded(course, now)) for course in child.courses)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        child = self.child
+        if child is None:
+            return {}
+        now = _now_naive_local()
+        overdue: list[dict[str, Any]] = []
+        ungraded: list[dict[str, Any]] = []
+        for course in child.courses:
+            overdue.extend(
+                _assignment_attributes(item, course)
+                for item in _overdue_ungraded(course, now)
+            )
+            ungraded.extend(
+                _assignment_attributes(item, course) for item in _ungraded(course)
+            )
+        overdue.sort(key=lambda item: item["due_date"] or "")
+        ungraded.sort(key=lambda item: item["due_date"] or "")
+        return {
+            "ungraded_total": len(ungraded),
+            "overdue_ungraded": overdue,
+            "ungraded": ungraded,
+            "courses_with_assignment_data": sum(
+                1 for course in child.courses if course.assignments_available
+            ),
         }
 
 
@@ -681,6 +777,47 @@ class ParentVueCourseMissingAssignmentsSensor(_CourseSensorBase):
         return course.missing_assignments if course else None
 
 
+class ParentVueCourseUngradedAssignmentsSensor(_CourseSensorBase):
+    """Per-course count of past-due ``Not Graded`` assignments with row details."""
+
+    def __init__(self, coordinator, child_key: str, course: ParentVueCourse) -> None:
+        super().__init__(
+            coordinator,
+            child_key,
+            course,
+            suffix="ungraded_assignments",
+            label="ungraded assignments",
+        )
+
+    @property
+    def available(self) -> bool:
+        course = self.course
+        return super().available and course is not None and course.assignments_available
+
+    @property
+    def native_value(self) -> int | None:
+        course = self.course
+        if course is None or not course.assignments_available:
+            return None
+        return len(_overdue_ungraded(course, _now_naive_local()))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        course = self.course
+        if course is None:
+            return {}
+        now = _now_naive_local()
+        return {
+            **super().extra_state_attributes,
+            "assignment_count": len(course.assignments),
+            "ungraded_total": len(_ungraded(course)),
+            "overdue_ungraded": [
+                _assignment_attributes(item) for item in _overdue_ungraded(course, now)
+            ],
+            "assignments": [_assignment_attributes(item) for item in course.assignments],
+        }
+
+
 class ParentVueCourseDeliverySensor(_CourseSensorBase):
     """Course delivery-mode sensor when today's schedule identifies it."""
 
@@ -737,6 +874,7 @@ _COURSE_ENTITY_CLASSES: tuple[type[_CourseSensorBase], ...] = (
     ParentVueCoursePeriodSensor,
     ParentVueCourseMarkingPeriodSensor,
     ParentVueCourseMissingAssignmentsSensor,
+    ParentVueCourseUngradedAssignmentsSensor,
     ParentVueCourseDeliverySensor,
     ParentVueCourseLastUpdatedSensor,
 )
@@ -779,6 +917,7 @@ async def async_setup_entry(
                 f"{child.key}:school": ParentVueSchoolSensor,
                 f"{child.key}:grade_level": ParentVueGradeLevelSensor,
                 f"{child.key}:missing": ParentVueMissingAssignmentsSensor,
+                f"{child.key}:ungraded": ParentVueUngradedAssignmentsSensor,
                 f"{child.key}:today_schedule": ParentVueTodayScheduleSensor,
                 f"{child.key}:current_class": ParentVueCurrentClassSensor,
                 f"{child.key}:next_class": ParentVueNextClassSensor,

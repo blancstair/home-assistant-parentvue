@@ -3,6 +3,30 @@
 All notable changes to the ParentVUE Home Assistant integration are documented
 here. Versioning follows Semantic Versioning.
 
+## 0.4.0 - Unreleased
+
+### Added
+
+- Per-course assignment rows loaded through the website's own
+  `Gradebook_ClassDetails` control (`PXP2Communication.asmx/LoadControl`),
+  reusing the `data-focus` arguments ParentVUE renders on each course title.
+- Per-child `Ungraded assignments` sensor: state is the number of past-due
+  assignments whose ParentVUE score column reads `Not Graded`; attributes list
+  every ungraded row (`ungraded`) and the past-due subset (`overdue_ungraded`)
+  with course, date, type, points, and notes.
+- Per-course `ungraded assignments` sensor with the same counts plus the full
+  `assignments` list for that course.
+
+### Notes
+
+- `Not Graded` is ParentVUE's literal score text; the integration does not
+  infer missing/late/exempt status from it. A past-due ungraded assignment may
+  be submitted but unscored, or unsubmitted but not yet flagged `Missing`.
+- Assignment loading is per-course and non-fatal; a course whose details cannot
+  be loaded keeps its summary data and its ungraded sensor becomes unavailable.
+- Only display values are retained from grid cells. Focus arguments embedded in
+  the grid (student/class identifiers) are discarded during parsing.
+
 ## 0.3.0 - 2026-09-11
 
 ### Added

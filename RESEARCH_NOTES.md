@@ -42,9 +42,47 @@ percentage.
 
 The site also uses structured methods under
 `/service/PXP2Communication.asmx/`, including observed
-`GradebookFocusClassInfo` and `LoadControl` calls. Detailed assignment/category
-normalization remains deferred until stable request/response contracts are
-validated.
+`GradebookFocusClassInfo` and `LoadControl` calls.
+
+### Course assignment grid (validated against a second district, 0.4.0)
+
+Each course title in the Grade Book summary is a `<button class="course-title">`
+carrying a `data-focus` attribute (single-quoted JSON) of the form:
+
+```json
+{"LoadParams":{"ControlName":"Gradebook_ClassDetails","HideHeader":false},
+ "FocusArgs":{"viewName":null,"studentGU":"…","schoolID":2,"classID":123456,
+              "markPeriodGU":"…","gradePeriodGU":"…","subjectID":-1,
+              "teacherID":-1,"assignmentID":-1,"standardIdentifier":null,
+              "AGU":"0","OrgYearGU":"…","gradingPeriodGroup":null}}
+```
+
+The website posts this to `/service/PXP2Communication.asmx/LoadControl` as
+`{"request":{"control":"<ControlName>","parameters":<FocusArgs>}}` with the
+same `AGU` / `CURRENT_WEB_PORTAL` headers used by other JSON calls. The
+response is `{"d":{"Data":{"html":"…"},"DataType":"…","Error":null}}`.
+
+Inside the returned HTML, `#AssignmentsGrid` is initialised with a DevExpress
+`dxDataGrid` configuration. The configuration object is not valid JSON (it
+references JavaScript functions), but its `"dataSource":[…]` array is, and can
+be decoded with `json.JSONDecoder.raw_decode` from the opening bracket.
+Observed row fields:
+
+- `Date` — `M/D/YY`
+- `GBAssignment` — JSON string `{"value":"<name>","hrefAttributes":"data-focus=…"}`
+  (the embedded focus carries `Gradebook_AssignmentDetails` arguments and is
+  discarded)
+- `GBAssignmentType`, `GBScoreType`, `GBPoints` (e.g. `9.0000 Points Possible`),
+  `GBNotes`, `GBResources`, `GBDropBox`
+- `GBScore` — JSON string whose `value` is the score text; `Not Graded` is the
+  literal shown for unscored work
+
+A second `dxDataGrid` earlier in the same HTML holds category weights
+(`GBAssignmentType`/`GBWeight`/`GBPoints`); anchoring on `AssignmentsGrid`
+before searching for `dataSource` avoids it.
+
+Category-level normalization (`ctl00_CategoryWeights[data-data-source]`)
+remains deferred.
 
 ### Daily schedule
 
@@ -102,9 +140,10 @@ information, school information, documents, messages, and other modules.
 The integration deliberately does not invent unsupported semantics. Remaining
 areas include:
 
-- exact individual-assignment missing/late/exempt semantics
+- exact individual-assignment missing/late/exempt semantics (0.4.0 exposes
+  ParentVUE's score text and a `Not Graded` flag only)
 - reliable due-today/due-tomorrow/upcoming assignment normalization
-- detailed assignment/category data with stable assignment identifiers
+- category weighting data and stable assignment identifiers
 - structured report-card document access
 - Synergy Mail message list/detail data
 - school-calendar event normalization
